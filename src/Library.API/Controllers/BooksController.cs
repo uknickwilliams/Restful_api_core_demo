@@ -14,22 +14,28 @@ namespace Library.API.Controllers
     public class BooksController : Controller
     {
         private readonly ILibraryRepository _libraryRepository;
+        private readonly IUrlHelper _urlHelper;
 
-        public BooksController(ILibraryRepository libraryRepository)
+        public BooksController(ILibraryRepository libraryRepository, IUrlHelper urlHelper)
         {
             _libraryRepository = libraryRepository;
+            _urlHelper = urlHelper;
         }
 
-        [HttpGet]
+        [HttpGet(Name = nameof(GetBooksForAuthor))]
         public IActionResult GetBooksForAuthor(Guid authorId)
         {
             if (!_libraryRepository.AuthorExists(authorId))
                 return NotFound();
 
             var books = _libraryRepository.GetBooksForAuthor(authorId)
-                .Select(b => new BookDto(b));
+                .Select(b => new BookDto(b))
+                .Select(CreateLinksForBook);
 
-            return Ok(books);
+            var wrapper = new LinkedCollectionResourceWrapperDto<BookDto>(books);
+            wrapper = CreateLinksForBooks(wrapper);
+
+            return Ok(wrapper);
         }
 
         [HttpGet("{id}", Name = nameof(GetBookForAuthor))]
@@ -43,10 +49,12 @@ namespace Library.API.Controllers
                 return NotFound();
 
             var bookDto = new BookDto(book);
+            bookDto = CreateLinksForBook(bookDto);
+
             return Ok(bookDto);
         }
 
-        [HttpPost]
+        [HttpPost(Name = nameof(CreateBookForAuthor))]
         public IActionResult CreateBookForAuthor(Guid authorId, [FromBody] CreateBookDto createBookDto)
         {
             if (createBookDto == null)
@@ -66,10 +74,11 @@ namespace Library.API.Controllers
             _libraryRepository.Save();
 
             var bookDto = new BookDto(book);
+            bookDto = CreateLinksForBook(bookDto);
             return CreatedAtRoute(nameof(GetBookForAuthor), new {authorId, id = book.Id}, bookDto);
         }
 
-        [HttpDelete("{id}")]
+        [HttpDelete("{id}", Name = nameof(DeleteBookForAuthor))]
         public IActionResult DeleteBookForAuthor(Guid authorId, Guid id)
         {
             if (!_libraryRepository.AuthorExists(authorId))
@@ -85,7 +94,7 @@ namespace Library.API.Controllers
             return NoContent();
         }
 
-        [HttpPut("{id}")]
+        [HttpDelete("{id}", Name = nameof(UpdateBookForAuthor))]
         public IActionResult UpdateBookForAuthor(Guid authorId, Guid id, [FromBody]UpdateBookDto updateBookDto)
         {
             if (updateBookDto == null)
@@ -126,7 +135,7 @@ namespace Library.API.Controllers
             return NoContent();
         }
 
-        [HttpPatch("{id}")]
+        [HttpDelete("{id}", Name = nameof(PatchBookForAuthor))]
         public IActionResult PatchBookForAuthor(Guid authorId, Guid id, [FromBody]JsonPatchDocument<UpdateBookDto> patchDoc)
         {
             if (patchDoc == null)
@@ -190,6 +199,23 @@ namespace Library.API.Controllers
             _libraryRepository.Save();
 
             return NoContent();
+        }
+
+        private BookDto CreateLinksForBook(BookDto book)
+        {
+            book.Links.Add(new LinkDto(_urlHelper.Link(nameof(GetBookForAuthor), new {id = book.Id}), "self", "GET"));
+            book.Links.Add(new LinkDto(_urlHelper.Link(nameof(DeleteBookForAuthor), new {id = book.Id}), "delete_book", "DELETE"));
+            book.Links.Add(new LinkDto(_urlHelper.Link(nameof(UpdateBookForAuthor), new {id = book.Id}), "update_book", "PUT"));
+            book.Links.Add(new LinkDto(_urlHelper.Link(nameof(PatchBookForAuthor), new {id = book.Id}), "partially_update_book", "PATCH"));
+
+            return book;
+        }
+
+        private LinkedCollectionResourceWrapperDto<BookDto> CreateLinksForBooks(LinkedCollectionResourceWrapperDto<BookDto> books)
+        {
+            books.Links.Add(new LinkDto(_urlHelper.Link(nameof(GetBooksForAuthor), new { }), "self", "GET"));
+
+            return books;
         }
     }
 }
